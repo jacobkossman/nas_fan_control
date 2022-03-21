@@ -1,4 +1,4 @@
-#!/usr/local/bin/perl
+#!/usr/bin/perl
 
 # This script is based on the hybrid fan controller script created by @Stux, and posted at:
 # https://forums.freenas.org/index.php?threads/script-hybrid-cpu-hd-fan-zone-controller.46159/
@@ -268,7 +268,7 @@ $hd_fan_header  = "FANB";                 # used for printing to standard output
 
 ## IPMITOOL PATH
 ## The script needs to know where ipmitool is
-$ipmitool = "/usr/local/bin/ipmitool";
+$ipmitool = "/usr/bin/ipmitool";
 
 ## HD POLLING INTERVAL
 ## The controller will only poll the harddrives periodically. Since hard drives change temperature slowly
