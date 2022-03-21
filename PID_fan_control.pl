@@ -152,7 +152,7 @@ $hd_fan_duty_start     = 60; # HD fan duty cycle when script starts
 ## DEBUG LEVEL
 ## 0 means no debugging. 1,2,3,4 provide more verbosity
 ## You should run this script in at least level 1 to verify its working correctly on your system
-$debug = 0;
+$debug = 2;
 $debug_log = '/root/Debug_PID_fan_control.log';
 
 ## LOG
@@ -288,6 +288,11 @@ $bmc_reboot_grace_time = 120; # seconds
 ## BMC RETRIES BEFORE REBOOTING
 ## We verify high/low of fans, and if they're not where they should be we reboot the BMC after so many failures
 $bmc_fail_threshold    = 1;     # will retry n times before rebooting
+
+## TrueNAS SSH Command Variables
+## Needed for computing HD temps (since HBA is being passed through and proxmox has no direct access)
+$ssh_command_prefix    = 'ssh root@192.168.1.251 -p 9222 "';
+$ssh_command_suffix    = '"';
 
 # edit nothing below this line
 ########################################################################################################################
@@ -506,7 +511,7 @@ sub main
 ################################################# SUBS
 sub get_hd_list
 {
-    my $disk_list = `camcontrol devlist | grep -v "SSD" | grep -v "Verbatim" | grep -v "Kingston" | grep -v "Elements" | sed 's:.*(::;s:).*::;s:,pass[0-9]*::;s:pass[0-9]*,::' | egrep '^[a]*da[0-9]+\$' | tr '\012' ' '`;
+    my $disk_list = `${ssh_command_prefix}camcontrol devlist | grep -v "SSD" | grep -v "Verbatim" | grep -v "Kingston" | grep -v "Elements" | sed 's:.*(::;s:).*::;s:,pass[0-9]*::;s:pass[0-9]*,::' | egrep '^[a]*da[0-9]' | tr '\012' ' '$ssh_command_suffix`;
     dprint(3,"$disk_list\n");
 
     my @vals = split(" ", $disk_list);
@@ -526,7 +531,7 @@ sub get_hd_temp
     foreach my $item (@hd_list)
     {
         my $disk_dev = "/dev/$item";
-        my $command = "/usr/local/sbin/smartctl -A $disk_dev | grep Temperature_Celsius";
+        my $command = "$ssh_command_prefix/usr/local/sbin/smartctl -A $disk_dev | grep Temperature_Celsius$ssh_command_suffix";
          
         dprint( 3, "$command\n" );
         
@@ -565,7 +570,7 @@ sub get_hd_temps
     foreach my $item (@hd_list)
     {
         my $disk_dev = "/dev/$item";
-        my $command = "/usr/local/sbin/smartctl -A $disk_dev | grep Temperature_Celsius";
+        my $command = "$ssh_command_prefix/usr/local/sbin/smartctl -A $disk_dev | grep Temperature_Celsius$ssh_command_suffix";
 
         my $output = `$command`;
 
@@ -1065,7 +1070,8 @@ sub set_fan_mode
 sub get_cpu_temp_sysctl
 {
     # significantly more efficient to filter to dev.cpu than to just grep the whole lot!
-    my $core_temps = `sysctl -a dev.cpu | egrep -E \"dev.cpu\.[0-9]+\.temperature\" | awk '{print \$2}' | sed 's/.\$//'`;
+    my $core_temps = `sensors | egrep 'Core [0-9]' | awk '{print $3}' | sed 's/+//' | sed 's/°C//'`;
+    # my $core_temps = `sysctl -a dev.cpu | egrep -E \"dev.cpu\.[0-9]+\.temperature\" | awk '{print \$2}' | sed 's/.\$//'`;
     chomp($core_temps);
 
     dprint(3,"core_temps:\n$core_temps\n");
