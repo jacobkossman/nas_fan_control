@@ -268,7 +268,8 @@ $hd_fan_header  = "FANA";                 # used for printing to standard output
 
 ## IPMITOOL PATH
 ## The script needs to know where ipmitool is
-$ipmitool = "/usr/bin/ipmitool";
+$ipmitool = `which ipmitool`;
+chomp $ipmitool;
 
 ## HD POLLING INTERVAL
 ## The controller will only poll the harddrives periodically. Since hard drives change temperature slowly
