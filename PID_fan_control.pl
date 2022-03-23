@@ -511,7 +511,7 @@ sub main
 ################################################# SUBS
 sub get_hd_list
 {
-    my $disk_list = `${ssh_command_prefix}camcontrol devlist | grep -v "SSD" | grep -v "Verbatim" | grep -v "Kingston" | grep -v "Elements" | sed 's:.*(::;s:).*::;s:,pass[0-9]*::;s:pass[0-9]*,::' | egrep '^[a]*da[0-9]' | tr '\012' ' '$ssh_command_suffix`;
+    my $disk_list = `${ssh_command_prefix}camcontrol devlist | grep -v "SSD" | grep -v "Verbatim" | grep -v "Kingston" | grep -v "Elements" | grep -v "QEMU" | sed 's:.*(::;s:).*::;s:,pass[0-9]*::;s:pass[0-9]*,::' | egrep '^[a]*da[0-9]' | tr '\012' ' '$ssh_command_suffix`;
     dprint(3,"$disk_list\n");
 
     my @vals = split(" ", $disk_list);
