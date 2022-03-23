@@ -174,7 +174,7 @@ $low_cpu_temp  = 35;       # will go LOW when we fall below 35 again
 ## more silent your system.
 ## Note, it is possible for your HDs to go above this... but if your cooling is good, they shouldn't.
 # $hd_ave_target = 38.0;   # define this value in the DEFAULT VALUES block at top of script
-$hd_max_allowed_temp = 40; # celsius. PID control aborts and fans set to 100% duty cycle when a HD hits this temp.
+$hd_max_allowed_temp = 50; # celsius. PID control aborts and fans set to 100% duty cycle when a HD hits this temp.
                            # This ensures that no matter how poorly chosen the PID gains are, or how much of a spread
                            # there is between the average HD temperature and the maximum HD temperature, the HD fans 
                            # will be set to 100% if any drive reaches this temperature.
@@ -192,7 +192,7 @@ $cpu_hd_override_temp = 65;
 ## If your HD fans contribute to the cooling of your CPU you should set this value.
 ## It will mean when you CPU heats up your HD fans will be turned up to help cool the
 ## case/cpu. This would only not apply if your HDs and fans are in a separate thermal compartment.
-$hd_fans_cool_cpu = 1;      # 1 if the hd fans should spin up to cool the cpu, 0 otherwise
+$hd_fans_cool_cpu = 0;      # 1 if the hd fans should spin up to cool the cpu, 0 otherwise
 
 ## HD FAN DUTY CYCLE TO OVERRIDE CPU FANS
 $cpu_fans_cool_hd            = 1;  # 1 if the CPU fans should spin up to cool the HDs, when needed.  0 otherwise.  This may be 
@@ -223,7 +223,7 @@ $cpu_temp_control = 1;  # 1 if the script will control a CPU fan to control CPU 
 ## You need to determine the actual max fan speeds that are achieved by the fans
 ## Connected to the cpu_fan_header and the hd_fan_header.
 ## These values are used to verify high/low fan speeds and trigger a BMC reset if necessary.
-$cpu_max_fan_speed    = 1800;
+$cpu_max_fan_speed    = 2000;
 $hd_max_fan_speed     = 3300;
 
 
@@ -257,9 +257,9 @@ $hd_fan_zone  = 1;
 ## these are the fan headers which are used to verify the fan zone is high. FAN1+ are all in Zone 0, FANA is Zone 1.
 ## cpu_fan_header should be in the cpu_fan_zone
 ## hd_fan_header should be in the hd_fan_zone
-$cpu_fan_header = "FAN2";                 # used for printing to standard output for debugging   
-$hd_fan_header  = "FANB";                 # used for printing to standard output for debugging   
-@hd_fan_list = ("FANA", "FANB", "FANC");  # used for logging to file  
+$cpu_fan_header = "FAN1";                 # used for printing to standard output for debugging   
+$hd_fan_header  = "FANA";                 # used for printing to standard output for debugging   
+@hd_fan_list = ("FANA");  # used for logging to file  
 
 
 ################
@@ -283,7 +283,7 @@ $fan_speed_change_delay = 10; # seconds
 ## BMC REBOOT TIME
 ## It takes the BMC a number of seconds to reset and start providing sensible output. We'll only
 ## Reset the BMC if its still providing rubbish after this time.
-$bmc_reboot_grace_time = 120; # seconds
+$bmc_reboot_grace_time = 180; # seconds
 
 ## BMC RETRIES BEFORE REBOOTING
 ## We verify high/low of fans, and if they're not where they should be we reboot the BMC after so many failures
@@ -1070,7 +1070,7 @@ sub set_fan_mode
 sub get_cpu_temp_sysctl
 {
     # significantly more efficient to filter to dev.cpu than to just grep the whole lot!
-    my $core_temps = `sensors | egrep 'Core [0-9]' | awk '{print $3}' | sed 's/+//' | sed 's/°C//'`;
+    my $core_temps = `sensors | egrep -E \"Core [0-9]\" | awk '{print \$3}' | sed 's/+//' | sed 's/°C//'`;
     # my $core_temps = `sysctl -a dev.cpu | egrep -E \"dev.cpu\.[0-9]+\.temperature\" | awk '{print \$2}' | sed 's/.\$//'`;
     chomp($core_temps);
 
