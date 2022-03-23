@@ -1,0 +1,10 @@
+[Unit]
+Description=IPMI Fan Control Script
+After=multi-user.target
+
+[Service]
+type=idle
+ExecStart=/usr/bin/perl /usr/local/bin/PID_fan_control.pl
+
+[Install]
+WantedBy=multi-user.target
