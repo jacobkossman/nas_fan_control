@@ -128,12 +128,14 @@
 # 2020-01-01 Merged options for selectable number of disks to average and certain settings in config file to
 #            Master branch
 #
-# 2026-10-24 TrueNAS SCALE (Linux) support. get_hd_list() used FreeBSD's camcontrol, which doesn't exist on
-#            SCALE, so the script saw no drives at all. It now lists drives with lsblk, keeping only spinning
-#            disks (SSDs such as SLOG / L2ARC drop out) and skipping the VM's virtual QEMU boot disk.
-#            smartctl moved from /usr/local/sbin to /usr/sbin on SCALE; the path is now $smartctl below,
-#            run through sudo because the ssh user isn't root.
-#            This version no longer works on TrueNAS CORE.
+# 2026-10-24 TrueNAS SCALE (Linux) support. get_hd_list() only knew FreeBSD's camcontrol, which doesn't exist
+#            on SCALE, so the script saw no drives at all. It now asks TrueNAS which OS it runs (uname) and
+#            lists drives with camcontrol on CORE or lsblk on SCALE (spinning disks only, so SSDs such as a
+#            SLOG / L2ARC drop out, and the VM's virtual QEMU boot disk is skipped).
+#            smartctl is /usr/local/sbin on CORE and /usr/sbin on SCALE; $smartctl below picks the right one,
+#            through sudo on SCALE so the ssh user doesn't have to be root.
+#            Machine-specific settings (ssh login, fan zones, speeds...) can live in local_settings.pl, which
+#            is kept out of git. See README.md.
 #
 # TO DO
 #           Do not change fan speed due to calculated Tave changes when switching config scripts
@@ -302,13 +304,15 @@ $bmc_fail_threshold    = 1;     # will retry n times before rebooting
 $ssh_command_prefix    = 'ssh root@192.168.1.251 -p 9222 "';
 $ssh_command_suffix    = '"';
 
-## SMARTCTL PATH ON TRUENAS
-## TrueNAS SCALE: /usr/sbin/smartctl   (TrueNAS CORE was /usr/local/sbin/smartctl)
-## The ssh user isn't root, and reading drive temps needs root, so it goes
-## through sudo. In TrueNAS: Credentials > Users > (ssh user) > "Allowed sudo
-## commands with no password" must list /usr/sbin/smartctl. -n makes sudo fail
-## instead of hanging on a password prompt if that's ever missing.
-$smartctl = 'sudo -n /usr/sbin/smartctl';
+## SMARTCTL COMMAND ON TRUENAS
+## Leave empty and the script picks it after checking which TrueNAS it's talking to:
+##   TrueNAS CORE (FreeBSD): /usr/local/sbin/smartctl
+##   TrueNAS SCALE (Linux):  sudo -n /usr/sbin/smartctl
+## SCALE goes through sudo so the ssh user doesn't have to be root. In TrueNAS: Credentials > Users > (ssh user) >
+## "Allowed sudo commands with no password" must list /usr/sbin/smartctl. -n makes sudo fail instead of hanging on
+## a password prompt if that's ever missing. If you ssh in as root, sudo just runs it, nothing to set up.
+## Set it yourself only if your smartctl lives somewhere else.
+$smartctl = '';
 
 # edit nothing below this line
 ########################################################################################################################
@@ -333,6 +337,7 @@ else
 
 # GLOBALS
 @hd_list = ();
+$remote_os = '';        # FreeBSD (TrueNAS CORE) or Linux (TrueNAS SCALE), set by detect_remote_os()
 
 # massage fan speeds
 $cpu_max_fan_speed *= 0.8;
@@ -367,6 +372,8 @@ sub main
 
     ($hd_ave_target, $Kp, $Ki, $Kd, $hd_num_peak, $hd_fan_duty_start) = read_config();
     
+    detect_remote_os();
+
     # Print Log Header
     @hd_list = get_hd_list();
     print_log_header(@hd_list);
@@ -542,14 +549,49 @@ sub main
 }
 
 ################################################# SUBS
+# Ask TrueNAS what it runs: FreeBSD = TrueNAS CORE, Linux = TrueNAS SCALE.
+# Sets $remote_os, and $smartctl too if it was left empty. If ssh doesn't answer it leaves $remote_os empty, and
+# get_hd_list() tries again next time round.
+sub detect_remote_os
+{
+    my $os = `${ssh_command_prefix}uname -s$ssh_command_suffix`;
+    chomp $os;
+
+    if ($os eq 'FreeBSD' || $os eq 'Linux')
+    {
+        $remote_os = $os;
+        if ($smartctl eq '')
+        {
+            $smartctl = ($os eq 'FreeBSD') ? '/usr/local/sbin/smartctl' : 'sudo -n /usr/sbin/smartctl';
+        }
+        dprint(1, "TrueNAS runs $remote_os, smartctl command: $smartctl\n");
+    }
+    else
+    {
+        $remote_os = '';
+        print STDERR "Couldn't tell which TrueNAS this is (uname said '$os'). Check the ssh login.\n";
+    }
+}
+
 sub get_hd_list
 {
-    # TrueNAS SCALE (Linux). lsblk -dnr prints one line per whole disk as
-    # "NAME ROTA TYPE MODEL" with single spaces. Keep spinning disks only
-    # (ROTA 1), which drops SSDs like the SLOG and L2ARC, and skip the VM's
-    # virtual boot disk (model QEMU). No $ signs in here on purpose: they'd be
-    # eaten by Perl, then the local shell, then the remote shell.
-    my $disk_list = `${ssh_command_prefix}lsblk -dnr -o NAME,ROTA,TYPE,MODEL | grep -v QEMU | grep -E '^sd[a-z]+ 1 disk' | cut -d ' ' -f1 | tr '\012' ' '$ssh_command_suffix`;
+    detect_remote_os() if $remote_os eq '';
+
+    my $disk_list = '';
+    if ($remote_os eq 'FreeBSD')
+    {
+        # TrueNAS CORE: camcontrol lists the drives; SSDs, USB sticks and the VM's virtual disk are filtered out by
+        # name, leaving the daN / adaN device names.
+        $disk_list = `${ssh_command_prefix}camcontrol devlist | grep -v "SSD" | grep -v "Verbatim" | grep -v "Kingston" | grep -v "Elements" | grep -v "QEMU" | sed 's:.*(::;s:).*::;s:,pass[0-9]*::;s:pass[0-9]*,::' | egrep '^[a]*da[0-9]' | tr '\012' ' '$ssh_command_suffix`;
+    }
+    elsif ($remote_os eq 'Linux')
+    {
+        # TrueNAS SCALE: lsblk -dnr prints one line per whole disk as "NAME ROTA TYPE MODEL" with single spaces.
+        # Keep spinning disks only (ROTA 1), which drops SSDs like a SLOG or L2ARC, and skip the VM's virtual boot
+        # disk (model QEMU). No $ signs in here on purpose: they'd be eaten by Perl, then the local shell, then the
+        # remote shell.
+        $disk_list = `${ssh_command_prefix}lsblk -dnr -o NAME,ROTA,TYPE,MODEL | grep -v QEMU | grep -E '^sd[a-z]+ 1 disk' | cut -d ' ' -f1 | tr '\012' ' '$ssh_command_suffix`;
+    }
     dprint(3,"$disk_list\n");
 
     my @vals = split(" ", $disk_list);

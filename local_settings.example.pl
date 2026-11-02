@@ -12,7 +12,9 @@
 ## Keep the trailing double quote inside the single quotes.
 $ssh_command_prefix = 'ssh user@truenas.example.lan "';
 
-## smartctl on TrueNAS SCALE. Needs root; through sudo for a non-root user.
+## smartctl command. Leave this out: the script works out whether it's
+## TrueNAS CORE or SCALE and picks the right one. Only set it if yours lives
+## somewhere unusual.
 # $smartctl = 'sudo -n /usr/sbin/smartctl';
 
 ## Debug level, 0 = off
