@@ -20,3 +20,5 @@ nytprof.out
 /_eumm/
 *.*~
 PID_fan_control_config.ini
+# machine-specific settings (addresses, logins, fan tuning) -- never commit
+local_settings.pl
