@@ -238,7 +238,7 @@ $fan_duty_low          =  30;
 $hd_fan_duty_high      = 100;    # percentage on, ie 100% is full speed.
 $hd_fan_duty_med_high  =  80;
 $hd_fan_duty_med_low   =  50;
-$hd_fan_duty_low       =  16;    # some 120mm fans stall below 30.
+$hd_fan_duty_low       =  20;    # some 120mm fans stall below 30.
 #$hd_fan_duty_start    =  60;    # HD fan duty cycle when script starts - defined in config file
 
 
@@ -268,8 +268,7 @@ $hd_fan_header  = "FANA";                 # used for printing to standard output
 
 ## IPMITOOL PATH
 ## The script needs to know where ipmitool is
-$ipmitool = `which ipmitool`;
-chomp $ipmitool;
+$ipmitool = "/usr/bin/ipmitool";
 
 ## HD POLLING INTERVAL
 ## The controller will only poll the harddrives periodically. Since hard drives change temperature slowly
@@ -292,7 +291,7 @@ $bmc_fail_threshold    = 1;     # will retry n times before rebooting
 
 ## TrueNAS SSH Command Variables
 ## Needed for computing HD temps (since HBA is being passed through and proxmox has no direct access)
-$ssh_command_prefix    = 'ssh root@192.168.1.251 -p 9222 "';
+$ssh_command_prefix    = 'ssh root@silo.kossmn -p 9222 "';
 $ssh_command_suffix    = '"';
 
 # edit nothing below this line
