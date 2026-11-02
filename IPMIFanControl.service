@@ -3,7 +3,7 @@ Description=IPMI Fan Control Script
 After=multi-user.target
 
 [Service]
-type=idle
+ExecStartPre=/bin/sh -c 'until nmap 10.50.10.5 -PN -p 9222 | grep 'open'; do sleep 1; done;'
 ExecStart=/usr/bin/perl /usr/local/bin/PID_fan_control.pl
 
 [Install]
