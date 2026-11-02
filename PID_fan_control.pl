@@ -125,8 +125,15 @@
 #            The config file may be revised while the script is running, and the updated values will be read into the script 
 #            each time around the control loop.
 #
-# 2020-01-01 Merged options for selectable number of disks to average and certain settings in config file to 
+# 2020-01-01 Merged options for selectable number of disks to average and certain settings in config file to
 #            Master branch
+#
+# 2026-10-24 TrueNAS SCALE (Linux) support. get_hd_list() used FreeBSD's camcontrol, which doesn't exist on
+#            SCALE, so the script saw no drives at all. It now lists drives with lsblk, keeping only spinning
+#            disks (SSDs such as SLOG / L2ARC drop out) and skipping the VM's virtual QEMU boot disk.
+#            smartctl moved from /usr/local/sbin to /usr/sbin on SCALE; the path is now $smartctl below,
+#            run through sudo because the ssh user isn't root.
+#            This version no longer works on TrueNAS CORE.
 #
 # TO DO
 #           Do not change fan speed due to calculated Tave changes when switching config scripts
@@ -295,8 +302,33 @@ $bmc_fail_threshold    = 1;     # will retry n times before rebooting
 $ssh_command_prefix    = 'ssh root@192.168.1.251 -p 9222 "';
 $ssh_command_suffix    = '"';
 
+## SMARTCTL PATH ON TRUENAS
+## TrueNAS SCALE: /usr/sbin/smartctl   (TrueNAS CORE was /usr/local/sbin/smartctl)
+## The ssh user isn't root, and reading drive temps needs root, so it goes
+## through sudo. In TrueNAS: Credentials > Users > (ssh user) > "Allowed sudo
+## commands with no password" must list /usr/sbin/smartctl. -n makes sudo fail
+## instead of hanging on a password prompt if that's ever missing.
+$smartctl = 'sudo -n /usr/sbin/smartctl';
+
 # edit nothing below this line
 ########################################################################################################################
+
+## LOCAL SETTINGS (machine-specific, kept out of git)
+## Anything that belongs to one particular setup -- the TrueNAS ssh login and address, fan zones and headers, fan
+## speeds, thresholds -- can go in a separate Perl file instead of being edited in above. It's read here, after all
+## the defaults, so any variable set in it wins. The file is in .gitignore, so it never ends up on GitHub.
+## Start from local_settings.example.pl. It must end with "1;".
+$local_settings_file = '/root/nas_fan_control/local_settings.pl';
+if (-e $local_settings_file)
+{
+    my $ok = do $local_settings_file;
+    die "Error in $local_settings_file: $@" if $@;
+    die "Couldn't read $local_settings_file: $!" unless defined $ok;
+}
+else
+{
+    print STDERR "No $local_settings_file found, using the defaults in this script\n";
+}
 
 
 # GLOBALS
@@ -423,7 +455,7 @@ sub main
             }
             
     
-            # we refresh the hd_list from camcontrol devlist
+            # we refresh the hd_list from lsblk
             # everytime because if you're adding/removing HDs we want
             # starting checking their temps too!
             @hd_list = get_hd_list();
@@ -512,7 +544,12 @@ sub main
 ################################################# SUBS
 sub get_hd_list
 {
-    my $disk_list = `${ssh_command_prefix}camcontrol devlist | grep -v "SSD" | grep -v "Verbatim" | grep -v "Kingston" | grep -v "Elements" | grep -v "QEMU" | sed 's:.*(::;s:).*::;s:,pass[0-9]*::;s:pass[0-9]*,::' | egrep '^[a]*da[0-9]' | tr '\012' ' '$ssh_command_suffix`;
+    # TrueNAS SCALE (Linux). lsblk -dnr prints one line per whole disk as
+    # "NAME ROTA TYPE MODEL" with single spaces. Keep spinning disks only
+    # (ROTA 1), which drops SSDs like the SLOG and L2ARC, and skip the VM's
+    # virtual boot disk (model QEMU). No $ signs in here on purpose: they'd be
+    # eaten by Perl, then the local shell, then the remote shell.
+    my $disk_list = `${ssh_command_prefix}lsblk -dnr -o NAME,ROTA,TYPE,MODEL | grep -v QEMU | grep -E '^sd[a-z]+ 1 disk' | cut -d ' ' -f1 | tr '\012' ' '$ssh_command_suffix`;
     dprint(3,"$disk_list\n");
 
     my @vals = split(" ", $disk_list);
@@ -532,7 +569,7 @@ sub get_hd_temp
     foreach my $item (@hd_list)
     {
         my $disk_dev = "/dev/$item";
-        my $command = "$ssh_command_prefix/usr/local/sbin/smartctl -A $disk_dev | grep Temperature_Celsius$ssh_command_suffix";
+        my $command = "$ssh_command_prefix$smartctl -A $disk_dev | grep Temperature_Celsius$ssh_command_suffix";
          
         dprint( 3, "$command\n" );
         
@@ -571,7 +608,7 @@ sub get_hd_temps
     foreach my $item (@hd_list)
     {
         my $disk_dev = "/dev/$item";
-        my $command = "$ssh_command_prefix/usr/local/sbin/smartctl -A $disk_dev | grep Temperature_Celsius$ssh_command_suffix";
+        my $command = "$ssh_command_prefix$smartctl -A $disk_dev | grep Temperature_Celsius$ssh_command_suffix";
 
         my $output = `$command`;
 
